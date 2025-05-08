@@ -8,6 +8,8 @@ const rateLimit = require("express-rate-limit");
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const paymentRoutes = require("./routes/payment.routes");
+const eventRoutes = require("./routes/event.routes");
+const serviceRoutes = require("./routes/service.routes");
 
 // Rate limiting
 const apiLimiter = rateLimit({
@@ -27,9 +29,10 @@ const configureServer = (app) => {
       origin:
         process.env.NODE_ENV === "production"
           ? "https://your-production-domain.com"
-          : "http://localhost:3000",
+          : true, // Allow any origin in development
       methods: ["GET", "POST", "PUT", "DELETE"],
       allowedHeaders: ["Content-Type", "Authorization"],
+      credentials: true,
     })
   );
 
@@ -46,6 +49,8 @@ const configureServer = (app) => {
   app.use("/api/auth", authRoutes);
   app.use("/api/user", userRoutes);
   app.use("/api/payment", paymentRoutes);
+  app.use("/api/events", eventRoutes);
+  app.use("/api/services", serviceRoutes);
 
   // Error handling middleware
   app.use((err, req, res, next) => {

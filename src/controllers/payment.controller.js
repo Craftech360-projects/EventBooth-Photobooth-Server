@@ -1,14 +1,16 @@
 const Razorpay = require('razorpay');
+const { razorpay } = require('../config/razorpay'); // Import the initialized instance
 const { admin } = require("../config/firebase");
 const createError = require("http-errors");
 const crypto = require("crypto");
 const { firestore } = admin;
 const db = firestore();
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+// Remove the direct initialization here
+// const razorpay = new Razorpay({
+//   key_id: process.env.RAZORPAY_KEY_ID,
+//   key_secret: process.env.RAZORPAY_KEY_SECRET,
+// });
 
 // Create Razorpay order
 const createOrder = async (req, res, next) => {
@@ -21,15 +23,23 @@ const createOrder = async (req, res, next) => {
       return next(createError(400, "Plan ID and amount are required"));
     }
 
-    // Create order in Razorpay
+    // Generate a shorter receipt ID (max 40 chars)
+    // Using first 8 chars of UID and timestamp in hex
+    const shortUid = uid.substring(0, 8);
+    const timestampHex = Date.now().toString(16); // Convert timestamp to hex
+    const receiptId = `order_${shortUid}_${timestampHex}`; 
+    // Ensure it doesn't exceed 40 chars, though this combination should be well under.
+    const finalReceiptId = receiptId.substring(0, 40);
+
+    // Create order in Razorpay using the imported instance
     const options = {
       amount: amount * 100, // Razorpay expects amount in paise
       currency: "INR",
-      receipt: `order_${uid}_${Date.now()}`,
+      receipt: finalReceiptId, // Use the shortened receipt ID
       payment_capture: 1, // Auto-capture payment
     };
 
-    const order = await razorpay.orders.create(options);
+    const order = await razorpay.orders.create(options); // Use the imported razorpay instance
 
     // Store order in Firestore
     await db
@@ -50,8 +60,16 @@ const createOrder = async (req, res, next) => {
       orderId: order.id,
       amount: order.amount,
       currency: order.currency,
+      key_id: process.env.RAZORPAY_KEY_ID,
     });
   } catch (error) {
+    // Check if the error is from Razorpay and has a specific structure
+    if (error.statusCode && error.error && error.error.description) {
+      console.error("Razorpay API Error:", error.error.description);
+      // Pass a more specific error message
+      return next(createError(error.statusCode, `Razorpay Error: ${error.error.description}`));
+    }
+    // Log the generic error if it's not a standard Razorpay error
     console.error("Error creating order:", error);
     return next(createError(500, "Error creating payment order"));
   }
@@ -147,8 +165,7 @@ const verifyPayment = async (req, res, next) => {
 };
 
 module.exports = {
-  razorpay,
+  // razorpay, // No need to export razorpay from here anymore
   createOrder,
   verifyPayment,
-
 };
