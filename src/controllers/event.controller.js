@@ -33,6 +33,8 @@ const getAllEvents = async (req, res, next) => {
 const getEventById = async (req, res, next) => {
   try {
     const eventId = req.params.id;
+    console.log("Event ID:", eventId);
+
     const db = admin.firestore();
 
     const eventDoc = await db.collection("events").doc(eventId).get();

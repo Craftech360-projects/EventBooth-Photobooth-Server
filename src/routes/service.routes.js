@@ -17,7 +17,11 @@ const validateServiceRequest = (req, res, next) => {
   next();
 };
 
-// Apply auth middleware to all routes
+// Define the route that doesn't need authentication first
+// This endpoint doesn't need verifyToken middleware since it's used by the Flutter app
+router.post("/verify-auth-code", serviceController.verifyServiceAuthCode);
+
+// Apply auth middleware to all other routes
 router.use(verifyToken);
 
 // Get all available services
@@ -31,6 +35,9 @@ router.get(
   "/requests/event/:eventId",
   serviceController.getServiceRequestsByEvent
 );
+
+// Get service request by ID
+router.get("/requests/:requestId", serviceController.getServiceRequestById);
 
 // Create a new service request
 router.post(

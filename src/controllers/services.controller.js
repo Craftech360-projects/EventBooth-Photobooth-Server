@@ -222,9 +222,165 @@ const createServiceRequest = async (req, res, next) => {
   }
 };
 
+// Verify service authentication code
+const verifyServiceAuthCode = async (req, res, next) => {
+  try {
+    const { serviceId, authCode, timestamp } = req.body;
+
+    if (!serviceId || !authCode || !timestamp) {
+      return res.status(400).json({
+        status: "error",
+        message: "Missing required fields: serviceId, authCode, or timestamp",
+      });
+    }
+
+    // Get the service request from Firestore
+    const serviceRequestDoc = await db
+      .collection("serviceRequests")
+      .doc(serviceId)
+      .get();
+
+    if (!serviceRequestDoc.exists) {
+      return res.status(404).json({
+        status: "error",
+        message: "Service request not found",
+      });
+    }
+
+    const serviceRequest = serviceRequestDoc.data();
+
+    // Check if the service is active
+    const now = new Date();
+    const startDate = serviceRequest.startDateTime.toDate();
+    const endDate = serviceRequest.endDateTime.toDate();
+
+    if (now < startDate || now > endDate) {
+      return res.status(403).json({
+        status: "error",
+        message: "Service is not active at this time",
+      });
+    }
+
+    // Generate the expected code for the given timestamp
+    // This should match the logic in the AuthCode.jsx component
+    const expectedCode = generateAuthCodeForTimestamp(serviceId, timestamp);
+
+    // Compare the received code with the expected code
+    if (authCode === expectedCode) {
+      return res.status(200).json({
+        status: "success",
+        message: "Authentication successful",
+        data: {
+          serviceId,
+          isValid: true,
+        },
+      });
+    } else {
+      return res.status(401).json({
+        status: "error",
+        message: "Invalid authentication code",
+        data: {
+          serviceId,
+          isValid: false,
+        },
+      });
+    }
+  } catch (error) {
+    console.error("Error verifying service auth code:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to verify authentication code",
+    });
+  }
+};
+
+// Helper function to generate auth code for a timestamp
+// This should match the logic in the AuthCode.jsx component
+const generateAuthCodeForTimestamp = (serviceId, timestamp) => {
+  // Generate a random 6-digit number based on serviceId and timestamp
+  // This is a simplified version - in production, use a more secure algorithm
+  const seed = `${serviceId}_${timestamp}`;
+  const hash = require("crypto")
+    .createHash("sha256")
+    .update(seed)
+    .digest("hex");
+
+  // Take the first 6 digits of the hash
+  const min = 100000; // Smallest 6-digit number
+  const max = 999999; // Largest 6-digit number
+
+  // Convert the first 6 characters of the hash to a number between min and max
+  const hashNum = parseInt(hash.substring(0, 8), 16);
+  const code = (hashNum % (max - min + 1)) + min;
+
+  // Convert to string and ensure it's 6 digits
+  return String(code).padStart(6, "0");
+};
+
+// Get service request by ID
+const getServiceRequestById = async (req, res, next) => {
+  try {
+    const userId = req.user.uid;
+    const { requestId } = req.params;
+
+    // Get the service request
+    const requestDoc = await db
+      .collection("serviceRequests")
+      .doc(requestId)
+      .get();
+
+    if (!requestDoc.exists) {
+      return res.status(404).json({
+        status: "error",
+        message: "Service request not found",
+      });
+    }
+
+    const requestData = requestDoc.data();
+
+    // Verify the request belongs to one of the user's events
+    const eventDoc = await db
+      .collection("events")
+      .doc(requestData.eventId)
+      .get();
+
+    if (!eventDoc.exists) {
+      return res.status(404).json({
+        status: "error",
+        message: "Associated event not found",
+      });
+    }
+
+    const eventData = eventDoc.data();
+
+    if (eventData.userId !== userId) {
+      return res.status(403).json({
+        status: "error",
+        message: "You do not have permission to access this service request",
+      });
+    }
+
+    return res.status(200).json({
+      status: "success",
+      data: {
+        id: requestDoc.id,
+        ...requestData,
+      },
+    });
+  } catch (error) {
+    console.error("Error getting service request:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to get service request",
+    });
+  }
+};
+
 module.exports = {
   getServices,
   getServiceRequests,
   getServiceRequestsByEvent,
   createServiceRequest,
+  verifyServiceAuthCode,
+  getServiceRequestById,
 };
